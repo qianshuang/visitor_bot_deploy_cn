@@ -5,5 +5,5 @@ from zhon.hanzi import punctuation
 
 from common import *
 
-line = "测试。。去除标点『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿。。      "
+line = "花!呗/期?免,息.---蚂！蚁/花呗？期免stops息，什么。意思?？"
 print(pre_process(line))
