@@ -2,6 +2,8 @@
 
 import string
 import re
+
+import pypinyin
 from zhon.hanzi import punctuation
 
 
@@ -24,6 +26,9 @@ def write_lines(filename, list_res):
 
 
 def pre_process(query):
+    # 1. 转小写
+    # query = query.lower()
+
     # 2. 去标点
     query = re.sub(r"[%s]+" % punctuation, "", query)
     for c in string.punctuation:
@@ -32,3 +37,7 @@ def pre_process(query):
     # 3. 合并空格
     query = re.sub(r'\s+', ' ', query)
     return query
+
+
+def get_pinyin(hanz):
+    return " ".join(pypinyin.lazy_pinyin(hanz, style=pypinyin.NORMAL))

@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import time
-import marisa_trie
 import schedule
 import os
 import json
-from collections import Counter
 import threading
 
 from whoosh import index
@@ -20,24 +18,26 @@ BOT_SRC_DIR = "bot_resources"
 # 默认返回大小
 default_size = 10
 
-bot_intents_lower_dict = {}
-bot_trie = {}
+bot_intents_dict = {}
 bot_priorities = {}
 bot_recents = {}
 bot_frequency = {}
 
 bot_searcher = {}
-bot_qp = {}
+bot_qp_or = {}
+bot_qp_and = {}
 
 for bot_na in os.listdir(BOT_SRC_DIR):
-    # 加载intents文件
     INTENT_FILE = os.path.join(BOT_SRC_DIR, bot_na, "intents.txt")
-    intents_lower_dict = {pre_process(intent): intent for intent in read_file(INTENT_FILE)}
-    trie = marisa_trie.Trie(list(intents_lower_dict.keys()))
+    intents_dict = {}
+    for intent in read_file(INTENT_FILE):
+        intent_pro = pre_process(intent)
+        intents_dict[intent_pro] = intent
 
-    bot_intents_lower_dict[bot_na] = intents_lower_dict
-    bot_trie[bot_na] = trie
-    print(bot_na, "intents trie finished building...")
+        intent_pinyin = get_pinyin(intent_pro)
+        intents_dict[intent_pinyin] = intent
+
+    bot_intents_dict[bot_na] = intents_dict
 
     # 加载whoosh索引文件
     index_dir = os.path.join(BOT_SRC_DIR, bot_na, "index")
@@ -47,18 +47,21 @@ for bot_na in os.listdir(BOT_SRC_DIR):
         schema = Schema(content=TEXT(stored=True))
         ix = create_in(index_dir, schema)
         writer = ix.writer()
-        for line in read_file(INTENT_FILE):
+        for line in intents_dict.keys():
             writer.add_document(content=line)
         writer.commit()
     else:
         ix = index.open_dir(index_dir)
     searcher = ix.searcher()
-
-    qp = QueryParser("content", ix.schema, group=OrGroup)
-    qp.add_plugin(qparser.FuzzyTermPlugin())
-
     bot_searcher[bot_na] = searcher
-    bot_qp[bot_na] = qp
+
+    qp_or = QueryParser("content", ix.schema, group=OrGroup)
+    qp_or.add_plugin(qparser.FuzzyTermPlugin())
+    bot_qp_or[bot_na] = qp_or
+
+    qp_and = QueryParser("content", ix.schema)
+    qp_and.add_plugin(qparser.FuzzyTermPlugin())
+    bot_qp_and[bot_na] = qp_and
     print(bot_na, "whoosh index finished building...")
 
     # 加载priority文件，越top优先级越高
@@ -86,23 +89,6 @@ for bot_na in os.listdir(BOT_SRC_DIR):
     bot_frequency[bot_na] = frequency
     print(bot_na, "frequency file finished loading...")
 
-# 读取纠错表文件
-CORRECTION_FILE = "resources/correction.json"
-if not os.path.exists(CORRECTION_FILE):
-    corrections = {}
-else:
-    with open(CORRECTION_FILE, encoding="utf-8") as f:
-        corrections = json.load(f)
-print("correction file finished loading...")
-
-
-def words(text):
-    return re.findall(r'\w+', text.lower())
-
-
-WORDS = Counter(words(open('resources/big.txt').read()))
-print("vocab file finished loading...")
-
 
 # 每天写入资源文件
 def run_resources():
@@ -111,7 +97,6 @@ def run_resources():
         write_lines(os.path.join(BOT_SRC_DIR, _bot_name_, "recent.txt"), bot_recents[_bot_name_])
         open_file(os.path.join(BOT_SRC_DIR, _bot_name_, "frequency.json"), mode='w').write(
             json.dumps(bot_frequency[_bot_name_], ensure_ascii=False))
-    open_file(CORRECTION_FILE, mode='w').write(json.dumps(corrections, ensure_ascii=False))
 
 
 # 每30天reset排序因子

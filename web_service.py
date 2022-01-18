@@ -32,24 +32,29 @@ def search():
     data = resq_data["query"].strip()
     size = int(resq_data["size"]) if "size" in resq_data else default_size
 
-    # 1. 原句trie
-    trie_res = smart_hint(bot_n, data)
-    # 2. 标点最后1句trie
-    if len(trie_res) == 0:
-        trie_res = smart_hint(bot_n, re.split(r'[,|.]', data)[-1].strip())
-    # 3. 编辑距离（若有性能问题，使用whoosh的FuzzyTermPlugin：tommy~2/3）
-    if len(trie_res) == 0:
-        trie_res = leven(bot_n, data)
+    # 1. 前缀搜索
+    whoosh_pre_res = whoosh_search(bot_n, data, "and")
+    # 2. 断句前缀搜索
+    if_split = bool(re.search(r'[,|.|，|。]', data))
+    if len(whoosh_pre_res) == 0 and if_split:
+        whoosh_pre_res = whoosh_search(bot_n, re.split(r'[,|.|，|。]', data)[-1].strip(), "and")
+    # 3. 拼音前缀搜索
+    if len(whoosh_pre_res) == 0:
+        data_pinyin = get_pinyin(data)
+        whoosh_pre_res = whoosh_search(bot_n, data_pinyin, "and")
+    # 4. 断句拼音前缀搜索
+    if len(whoosh_pre_res) == 0 and if_split:
+        whoosh_pre_res = whoosh_search(bot_n, re.split(r'[,|.|，|。]', data_pinyin)[-1].strip(), "and")
 
     priorities_res = bot_priorities[bot_n]
-    ranked_trie_res = rank(bot_n, list(set(trie_res) - set(priorities_res)))
-    # 4. 全文检索
-    if len(priorities_res + ranked_trie_res) >= size:
+    ranked_whoosh_res = rank(bot_n, list(set(whoosh_pre_res) - set(priorities_res)))
+    # 5. 全文检索
+    if len(priorities_res + ranked_whoosh_res) >= size:
         whoosh_res = []
     else:
-        whoosh_res = whoosh_search(bot_n, data)
+        whoosh_res = whoosh_search(bot_n, data, "or")
 
-    result = {'code': 0, 'msg': 'success', 'data': (priorities_res + ranked_trie_res + whoosh_res)[:size]}
+    result = {'code': 0, 'msg': 'success', 'data': (priorities_res + ranked_whoosh_res + whoosh_res)[:size]}
     return result
 
 
@@ -58,13 +63,11 @@ def callback():
     """
     {
         "bot_name": "xxxxxx",  # 要操作的bot name
-        "query": "xxxxxx"  # 用户query
         "intent": "xxxxxx"  # 匹配到的标准答案
     }
     """
     resq_data = json.loads(request.get_data())
     bot_n = resq_data["bot_name"].strip()
-    query = resq_data["query"]  # 此处不能strip()
     intent = resq_data["intent"].strip()
 
     # 回写recent文件
@@ -75,15 +78,6 @@ def callback():
     # 回写frequency文件
     bot_frequency[bot_n].setdefault(intent, 0)
     bot_frequency[bot_n][intent] = bot_frequency[bot_n][intent] + 1
-
-    # 回写纠错表
-    query = pre_process(query)
-    intent = pre_process(intent)
-    if len(trie.keys(query)) > 0:
-        peak_wrong_word(query, intent)
-    else:
-        query_ = re.split(r'[,|.]', query)[-1]
-        peak_wrong_word(query_, intent)
 
     result = {'code': 0, 'msg': 'success', 'data': resq_data}
     return jsonify(result)
@@ -103,6 +97,7 @@ def refresh():
     operate = resq_data["operate"].strip()
 
     if operate == "upsert":
+    elif # 复制bot
         # 刷新intents文件
         INTENT_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "intents.txt")
         intents_lower_dict_ = {pre_process(intent): intent for intent in read_file(INTENT_FILE_)}

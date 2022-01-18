@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import re
-from zhon.hanzi import punctuation
-
-from common import *
-
-line = "花!呗/期?免,息.---蚂！蚁/花呗？期免stops息，什么。意思?？"
-print(pre_process(line))
+l1 = ['b', 'c', 'd', 'b', 'c', 'a', 'a']
+l2 = sorted(set(l1), key=l1.index)
+print(l2)
