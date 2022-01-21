@@ -2,9 +2,11 @@
 
 import string
 import re
-
+import datetime
 import pypinyin
+from whoosh.lang import stopwords
 from zhon.hanzi import punctuation
+import jieba
 
 
 def open_file(filename, mode='r'):
@@ -25,19 +27,37 @@ def write_lines(filename, list_res):
         test_w.write(j + "\n")
 
 
-def pre_process(query):
-    # 1. 转小写
-    # query = query.lower()
+def rm_stws(query):
+    en_stws = stopwords.stoplists["en"]
+    remain_ws = [w for w in re.split(r'\s+', query) if w not in en_stws]
+    return " ".join(remain_ws)
 
-    # 2. 去标点
+
+def pre_process(query):
+    # 1. 去标点
     query = re.sub(r"[%s]+" % punctuation, "", query)
     for c in string.punctuation:
         query = query.replace(c, "")
 
-    # 3. 合并空格
+    # 2. 分词
+    query = " ".join(jieba.cut(query))
+
+    # 3. 去停用词
+    # query = rm_stws(query)
+
+    # 4. 合并空格
     query = re.sub(r'\s+', ' ', query)
     return query
 
 
 def get_pinyin(hanz):
-    return " ".join(pypinyin.lazy_pinyin(hanz, style=pypinyin.NORMAL))
+    pinyin = pypinyin.lazy_pinyin(hanz, style=pypinyin.NORMAL)
+    return rm_stws(" ".join(pinyin))
+
+
+def time_cost(start, type_="sec"):
+    interval = datetime.datetime.now() - start
+    if type_ == "sec":
+        return interval.total_seconds()
+    elif type_ == "day":
+        return interval.days

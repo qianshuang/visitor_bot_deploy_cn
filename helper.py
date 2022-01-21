@@ -22,24 +22,19 @@ def rank(bot_n, trie_res):
     return df["trie_res"].values.tolist()
 
 
-def whoosh_search(bot_n, query, type_):
-    query = pre_process(query)
+def whoosh_search(bot_n, query):
     pres = query.split(" ")[:-1]
     last = query.split(" ")[-1]
-    pres_fuzzy = " ".join([w + "~2" for w in pres])
-    last_fuzzy = last + "~2/" + str(len(last))
+    pres_fuzzy = " ".join([w + "~" for w in pres])
+    last_fuzzy = last + "*"
     query = (pres_fuzzy + " " + last_fuzzy).strip()
 
-    if type_ == "and":
-        query = bot_qp_and[bot_n].parse(query)
-    else:
-        query = bot_qp_or[bot_n].parse(query)
+    query = bot_qp[bot_n].parse(query)
+    print(query)
 
     results = bot_searcher[bot_n].search(query)
-
     # 还原源文本
     res = []
     for r in results:
         res.extend(r.values())
-    ori_res = [bot_intents_dict[bot_n][r] for r in res]
-    return sorted(set(ori_res), key=ori_res.index)
+    return [bot_intents_dict[bot_n][r] for r in res]

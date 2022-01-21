@@ -9,7 +9,7 @@ from gevent import pywsgi
 from whoosh import qparser
 from whoosh.index import create_in
 from whoosh.fields import *
-from whoosh.qparser import QueryParser, OrGroup
+from whoosh.qparser import QueryParser
 
 from common import *
 
@@ -17,13 +17,12 @@ import os
 
 app = Flask(__name__)
 
-# 创建索引
 schema = Schema(content=TEXT(stored=True))
 if not os.path.exists("index"):
     os.mkdir("index")
 ix = create_in("index", schema)
 writer = ix.writer()
-for line in read_file("bot_resources/bot2/intents.txt"):
+for line in read_file("bot_resources/bot1/intents.txt"):
     writer.add_document(content=line)
 writer.commit()
 print("building index finished...")
@@ -36,16 +35,16 @@ def search():
     resq_data = json.loads(request.get_data())
     query = resq_data["query"].strip()
 
-    qp = QueryParser("content", ix.schema, group=OrGroup)
-    qp.add_plugin(qparser.FuzzyTermPlugin())
+    qp = QueryParser("content", ix.schema)
+    # qp.add_plugin(qparser.FuzzyTermPlugin())
 
-    pres = query.split(" ")[:-1]
-    last = query.split(" ")[-1]
-    pres_fuzzy = " ".join([w + "~2" for w in pres])
-    last_fuzzy = last + "~2/" + str(len(last))
-    query = (pres_fuzzy + " " + last_fuzzy).strip()
+    query = pre_process(query)
+    # query = " ".join([w + "~" for w in query.split(" ")])
 
+    print(query)
     query = qp.parse(query)
+    print(query)
+
     results = searcher.search(query)
 
     res = []
@@ -55,5 +54,5 @@ def search():
 
 
 if __name__ == '__main__':
-    server = pywsgi.WSGIServer(('0.0.0.0', 8088), app)
+    server = pywsgi.WSGIServer(('0.0.0.0', 8089), app)
     server.serve_forever()

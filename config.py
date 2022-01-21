@@ -9,8 +9,9 @@ import threading
 from whoosh import index
 from whoosh.index import create_in
 from whoosh.fields import *
-from whoosh.qparser import QueryParser, OrGroup
+from whoosh.qparser import QueryParser
 from whoosh import qparser
+from jieba.analyse import ChineseAnalyzer
 
 from common import *
 
@@ -24,50 +25,57 @@ bot_recents = {}
 bot_frequency = {}
 
 bot_searcher = {}
-bot_qp_or = {}
-bot_qp_and = {}
+bot_qp = {}
+
+
+def build_bot_intents_dict(bot_name):
+    # 刷新intents文件
+    INTENT_FILE_ = os.path.join(BOT_SRC_DIR, bot_name, "intents.txt")
+    intents_dict_ = {}
+    for intent_ in read_file(INTENT_FILE_):
+        intent_pro_ = pre_process(intent_)
+        intents_dict_[intent_pro_] = intent_
+
+        intent_pinyin_ = get_pinyin(intent_pro_)
+        intents_dict_[intent_pinyin_] = intent_
+    bot_intents_dict[bot_name] = intents_dict_
+
+
+def build_bot_whoosh_index(bot_name, index_dir_):
+    schema_ = Schema(content=TEXT(stored=True, analyzer=ChineseAnalyzer()))
+    ix_ = create_in(index_dir_, schema_)
+    writer_ = ix_.writer()
+    for line_ in bot_intents_dict[bot_name].keys():
+        writer_.add_document(content=line_)
+    writer_.commit()
+    return ix_
+
+
+def build_bot_qp(bot_name, ix_):
+    qp_and_ = QueryParser("content", ix_.schema)
+    qp_and_.add_plugin(qparser.FuzzyTermPlugin())
+    bot_qp[bot_name] = qp_and_
+
 
 for bot_na in os.listdir(BOT_SRC_DIR):
-    INTENT_FILE = os.path.join(BOT_SRC_DIR, bot_na, "intents.txt")
-    intents_dict = {}
-    for intent in read_file(INTENT_FILE):
-        intent_pro = pre_process(intent)
-        intents_dict[intent_pro] = intent
-
-        intent_pinyin = get_pinyin(intent_pro)
-        intents_dict[intent_pinyin] = intent
-
-    bot_intents_dict[bot_na] = intents_dict
+    build_bot_intents_dict(bot_na)
+    print(bot_na, "intents dict finished building...")
 
     # 加载whoosh索引文件
     index_dir = os.path.join(BOT_SRC_DIR, bot_na, "index")
     if not os.path.exists(index_dir):
         os.mkdir(index_dir)
-
-        schema = Schema(content=TEXT(stored=True))
-        ix = create_in(index_dir, schema)
-        writer = ix.writer()
-        for line in intents_dict.keys():
-            writer.add_document(content=line)
-        writer.commit()
+        ix = build_bot_whoosh_index(bot_na, index_dir)
     else:
         ix = index.open_dir(index_dir)
-    searcher = ix.searcher()
-    bot_searcher[bot_na] = searcher
+    bot_searcher[bot_na] = ix.searcher()
 
-    qp_or = QueryParser("content", ix.schema, group=OrGroup)
-    qp_or.add_plugin(qparser.FuzzyTermPlugin())
-    bot_qp_or[bot_na] = qp_or
-
-    qp_and = QueryParser("content", ix.schema)
-    qp_and.add_plugin(qparser.FuzzyTermPlugin())
-    bot_qp_and[bot_na] = qp_and
+    build_bot_qp(bot_na, ix)
     print(bot_na, "whoosh index finished building...")
 
     # 加载priority文件，越top优先级越高
     PRIORITY_FILE = os.path.join(BOT_SRC_DIR, bot_na, "priority.txt")
-    priorities = read_file(PRIORITY_FILE)
-    bot_priorities[bot_na] = priorities
+    bot_priorities[bot_na] = read_file(PRIORITY_FILE)
     print(bot_na, "priority file finished loading...")
 
     # 读取recent文件，越top优先级越高
